@@ -20,7 +20,7 @@ from blufi.framectrl import *
 import logging
 log = logging.getLogger("blufi")
 logging.basicConfig(level=logging.ERROR)
-logging.getLogger("blufi").setLevel(logging.DEBUG)
+logging.getLogger("blufi").setLevel(logging.INFO)
 
 class BlufiClient:
     def __init__(self):
@@ -195,7 +195,7 @@ class BlufiClient:
             log.error("Unknown error")
 
     def onCustomData(self, data):
-        log.debug("onCustomData[%d] %s" % (len(data), data.hex()))
+        log.info("onCustomData[%d] %s" % (len(data), data))
 
     def parsePublicKey(self, data):
         log.debug("parsePublicKey %d bytes" % len(data))
