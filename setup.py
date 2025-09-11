@@ -6,7 +6,7 @@ setup(
     description="Python utility to interface with esp32 Blufi component.",
     packages=find_packages(),
     install_requires=[
-        'cryptography==45.0.7',
-        'bleak==1.1.1'
+        'cryptography>=45.0.7',
+        'bleak>=1.1.1'
     ],
 )
