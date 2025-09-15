@@ -532,8 +532,8 @@ class BlufiClient:
         postData = (data).to_bytes(1, byteorder='little')
         await self.post(False, dataChecksum, self.mRequireAck, type, postData)
 
-    def negotiateSecurity(self):
-        self.crypto = BlufiCrypto()
+    def negotiateSecurity(self, key_gen=2, key_size=512):
+        self.crypto = BlufiCrypto(generator=key_gen, key_size=key_size)
         self.crypto.genKeys()
         self.secEvent.clear()
         self.await_bleak(self.postNegotiateSecurity())

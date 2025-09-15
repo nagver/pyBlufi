@@ -6,7 +6,7 @@ from math import ceil
 # https://cryptography.io/en/latest/hazmat/primitives/asymmetric/dh/
 
 class BlufiCrypto(object):
-    def __init__(self, generator : int = 2, key_size : int = 512):
+    def __init__(self, generator: int = 2, key_size: int = 512):
         # Generate necessary keys
         self.dh_param = dh.generate_parameters(generator=generator, key_size=key_size)
         self.pn = self.dh_param.parameter_numbers()
