@@ -125,9 +125,6 @@ class BlufiClient:
         # print("%s: %r" % (characteristic.description, data))
         self.parseNotification(data)
 
-    # def connectByAddr(self, addr: str, timeout: float) -> None:
-    #     return self.await_bleak(self._connect_async(address, timeout=timeout))
-
     def stopNotify(self):
         if not self.connected:
             log.warning("stopNotify: Not connected")
@@ -147,6 +144,36 @@ class BlufiClient:
             return
         self.await_bleak(self._bleak_client.start_notify(BLUFI_NOTIF_CHAR_UUID, self.onNotify))
         self._notify_en = True
+
+    def bleDiscover(self, timeout: float = 10.0, return_adv: bool = True):
+        return self.await_bleak(self._ble_async_discover(timeout=timeout, return_adv=return_adv))
+
+    async def _ble_async_discover(self, timeout: float = 10.0, return_adv: bool = True):
+        device = await BleakScanner.discover(timeout=timeout, return_adv=return_adv)
+        return device
+
+    def connectDevice(self, device, timeout: float = 10) -> None:
+        return self.await_bleak(self._connect_async_device(device, timeout=timeout))
+
+    async def _connect_async_device(self, device, timeout: float) -> bool:
+        self._reset_state()
+        client = BleakClient(device)
+        try:
+            await client.connect(timeout=timeout)
+            if get_platform_type() != 'Linux':
+                log.info("MTU: %d" % client.mtu_size)
+                self.mBlufiMTU = client.mtu_size - 4
+            svc = client.services.get_service(BLUFI_SERVICE_UUID)
+            self.notif_char = svc.get_characteristic(BLUFI_NOTIF_CHAR_UUID)
+            self.write_char = svc.get_characteristic(BLUFI_WRITE_CHAR_UUID)
+            await client.start_notify(BLUFI_NOTIF_CHAR_UUID, self.onNotify)
+            self._notify_en = True
+        except asyncio.TimeoutError:
+            return False
+
+        self.connected = True
+        self._bleak_client = client
+        return True
 
     def connectByName(self, name: str, timeout: float = None) -> None:
         return self.await_bleak(self._connect_async_name(name, timeout=timeout))
