@@ -18,12 +18,11 @@ from blufi.constants import *
 from blufi.framectrl import *
 
 import logging
-log = logging.getLogger("blufi")
-logging.basicConfig(level=logging.ERROR)
-logging.getLogger("blufi").setLevel(logging.DEBUG)
 
 class BlufiClient:
-    def __init__(self, custom_data_cb: Optional[Callable[[bytearray], None]] = None):
+    def __init__(self, custom_data_cb: Optional[Callable[[bytearray], None]] = None, log_level = "ERROR"):
+        self.log = logging.getLogger(self.__class__.__name__)
+        self.log.setLevel(level=getattr(logging, log_level.upper(), logging.ERROR))
         # Created on demand in self._bleak_thread context.
         self._scanner = None
         self._bleak_client = None
@@ -65,6 +64,7 @@ class BlufiClient:
 
         # Clean up connections, etc. when exiting (even by KeyboardInterrupt)
         atexit.register(self._cleanup)
+        self.log.info("Init success")
 
     def _reset_state(self) -> None:
         self.connected = False
@@ -130,20 +130,20 @@ class BlufiClient:
 
     def stopNotify(self):
         if not self.connected:
-            log.warning("stopNotify: Not connected")
+            self.log.warning("stopNotify: Not connected")
             return
         if not self._notify_en:
-            log.warning("stopNotify: already disabled")
+            self.log.warning("stopNotify: already disabled")
             return
         self.await_bleak(self._bleak_client.stop_notify(BLUFI_NOTIF_CHAR_UUID))
         self._notify_en = False
 
     def startNotify(self):
         if not self.connected:
-            log.warning("startNotify: Not connected")
+            self.log.warning("startNotify: Not connected")
             return
         if self._notify_en:
-            log.warning("stopNotify: already enabled")
+            self.log.warning("stopNotify: already enabled")
             return
         self.await_bleak(self._bleak_client.start_notify(BLUFI_NOTIF_CHAR_UUID, self.onNotify))
         self._notify_en = True
@@ -164,7 +164,7 @@ class BlufiClient:
         try:
             await client.connect(timeout=timeout)
             if get_platform_type() != 'Linux':
-                log.info("MTU: %d" % client.mtu_size)
+                self.log.info("MTU: %d" % client.mtu_size)
                 self.mBlufiMTU = client.mtu_size - 4
             svc = client.services.get_service(BLUFI_SERVICE_UUID)
             self.notif_char = svc.get_characteristic(BLUFI_NOTIF_CHAR_UUID)
@@ -195,7 +195,7 @@ class BlufiClient:
         try:
             await client.connect(timeout=timeout)
             if get_platform_type() != 'Linux':
-                log.info("MTU: %d" % client.mtu_size)
+                self.log.info("MTU: %d" % client.mtu_size)
                 self.mBlufiMTU = client.mtu_size - 4
             # This does not seem to connect reliably.
             # await asyncio.wait_for(client.connect(), timeout)
@@ -218,17 +218,17 @@ class BlufiClient:
         return self.mSendSequence
 
     def onError(self, code):
-        log.error("code = %d" % code)
+        self.log.error("code = %d" % code)
         if code == WIFI_SCAN_FAIL:
-            log.error("Wifi scan fail")
+            self.log.error("Wifi scan fail")
         else:
-            log.error("Unknown error")
+            self.log.error("Unknown error")
 
     def onCustomData(self, data):
-        log.debug("onCustomData[%d] %s" % (len(data), data.hex()))
+        self.log.debug("onCustomData[%d] %s" % (len(data), data.hex()))
 
     def parsePublicKey(self, data):
-        log.debug("parsePublicKey %d bytes" % len(data))
+        self.log.debug("parsePublicKey %d bytes" % len(data))
         self.rxPubKeyBuf.extend(data)
         self.mAESKey = self.crypto.deriveSharedKey(self.rxPubKeyBuf)
         # This method is called from the bt notify callback and thus outside of
@@ -238,26 +238,26 @@ class BlufiClient:
 
     def parseVersion(self, data):
         self.version = "%d.%d" % (data[0], data[1])
-        log.info("parseVersion = %s" % self.version)
+        self.log.info("parseVersion = %s" % self.version)
 
     def getVersion(self):
         return self.version
 
     def parseWifiState(self, data):
         if len(data) < 3:
-            log.error("invalid wifi state data")
+            self.log.error("invalid wifi state data")
             return
         dataIS = io.BytesIO(data)
         opMode = dataIS.read(1)[0] & 0xff
-        log.debug("opMode = 0x%02X" % opMode)
+        self.log.debug("opMode = 0x%02X" % opMode)
         self.wifiState["opMode"] = opMode
 
         staConn = dataIS.read(1)[0] & 0xff
-        log.debug("staConn = 0x%02X" % staConn)
+        self.log.debug("staConn = 0x%02X" % staConn)
         self.wifiState["staConn"] = staConn
 
         softAPConn = dataIS.read(1)[0] & 0xff
-        log.debug("softAPConn = 0x%02X" % softAPConn)
+        self.log.debug("softAPConn = 0x%02X" % softAPConn)
         self.wifiState["softAPConn"] = softAPConn
 
     def getWifiState(self):
@@ -272,14 +272,14 @@ class BlufiClient:
             length = dataReader.read(1)[0] & 0xff
             readLeft -= 1
             if length < 1:
-                log.error("Parse WifiScan invalid length")
+                self.log.error("Parse WifiScan invalid length")
                 break
             rssi = dataReader.read(1)
             rssi = struct.unpack('<b', rssi)[0]
             ssidBytes = dataReader.read(length-1)
             readLeft -= length
             if len(ssidBytes) != length - 1:
-                log.error("Parse WifiScan parse ssid failed")
+                self.log.error("Parse WifiScan parse ssid failed")
                 break
 
             ssid = 'malformed'
@@ -290,10 +290,10 @@ class BlufiClient:
                     "rssi": rssi
                 })
             except Exception as e:
-                log.error(e)
-            log.debug("%s [%d]" % (ssid, rssi))
+                self.log.error(e)
+            self.log.debug("%s [%d]" % (ssid, rssi))
             scannedSSIDs += 1
-        log.info("Scanned %d SSIDs" % scannedSSIDs)
+        self.log.info("Scanned %d SSIDs" % scannedSSIDs)
         self.ssidListEvent.set()
 
     def getSSIDList(self):
@@ -303,17 +303,17 @@ class BlufiClient:
         ack = 0x100
         if len(data) > 0:
             ack = data[0] & 0xff
-            log.debug('gotack = 0x%02X' % ack)
+            self.log.debug('gotack = 0x%02X' % ack)
         # self.mAck.put(ack)
         # TODO: handle ack checking
 
     def parseCtrlData(self, subType, data):
-        log.debug("parseCtrlData: 0x%02X" % subType)
+        self.log.debug("parseCtrlData: 0x%02X" % subType)
         if subType == CTRL.SUBTYPE_ACK:
             self.parseAck(data)
 
     def parseDataData(self, subType, data):
-        log.debug("parseDataData: 0x%02X" % subType)
+        self.log.debug("parseDataData: 0x%02X" % subType)
         if subType == DATA.SUBTYPE_NEG:
             self.parsePublicKey(data)
         elif subType == DATA.SUBTYPE_VERSION:
@@ -324,21 +324,21 @@ class BlufiClient:
             try:
                 self.parseWifiScanList(data)
             except Exception as e:
-                log.error('parseWifiScanList error')
-                log.error(e)
+                self.log.error('parseWifiScanList error')
+                self.log.error(e)
         elif subType == DATA.SUBTYPE_ERROR:
             errCode = (data[0] & 0xff) if len(data) > 0 else 0xff
             self.onError(errCode)
         elif subType == DATA.SUBTYPE_CUSTOM_DATA:
             self.onCustomData(data)
         else:
-            log.error('parseDataData: Unknown subtype')
+            self.log.error('parseDataData: Unknown subtype')
 
     def parseNotification(self, data):
         seq = int(data[2])
         self.mReadSequence += 1
         if seq != self.mReadSequence:
-            log.error("seq %d != self.mReadSequence %d" % (seq, self.mReadSequence))
+            self.log.error("seq %d != self.mReadSequence %d" % (seq, self.mReadSequence))
         type = int(data[0])
         pkgType = getPackageType(type)
         subType = getSubType(type)
@@ -347,7 +347,7 @@ class BlufiClient:
         fctl = FrameCtrlData(frameCtrl)
 
         dataLen = int(data[3])
-        log.debug("seq %d type %d pkgType %d subType %d dataLen %d" % (seq, type, pkgType, subType, dataLen))
+        self.log.debug("seq %d type %d pkgType %d subType %d dataLen %d" % (seq, type, pkgType, subType, dataLen))
 
         dataBytes = bytearray(data[4:4+dataLen])
 
@@ -356,7 +356,7 @@ class BlufiClient:
             dataBytes = aes.decrypt(dataBytes)
 
         if fctl.isChecksum():
-            log.info('got checksum')
+            self.log.info('got checksum')
             respChecksum1 = int(data[len(data) - 1])
             respChecksum2 = int(data[len(data) - 2])
 
@@ -367,18 +367,18 @@ class BlufiClient:
             calcChecksum2 = crc & 0xff
 
             if (respChecksum1 != calcChecksum1) or (respChecksum2 != calcChecksum2):
-                log.error("parseNotification: read invalid checksum")
-                log.debug("expect checksum: ", respChecksum1, ", ", respChecksum2)
-                log.debug("received checksum: ", calcChecksum1, ", ", calcChecksum2)
+                self.log.error("parseNotification: read invalid checksum")
+                self.log.debug("expect checksum: ", respChecksum1, ", ", respChecksum2)
+                self.log.debug("received checksum: ", calcChecksum1, ", ", calcChecksum2)
                 return
             else:
-                log.info("CRC OK!")
+                self.log.info("CRC OK!")
                 pass
 
         dataOffset = 0
 
         if fctl.hasFrag():
-            log.debug("got hasFrag")
+            self.log.debug("got hasFrag")
             dataOffset = 2
             self.rxBuf.extend(dataBytes[2:])
         else:
@@ -472,9 +472,9 @@ class BlufiClient:
             postBytes = self.getPostBytes(type, encrypt, checksum, requireAck, frag, sequence, dataContent.getvalue())
             dataContent.seek(0)
             dataContent.truncate()
-            log.debug("sending %d bytes" % len(postBytes))
+            self.log.debug("sending %d bytes" % len(postBytes))
             if requireAck:
-                log.debug("sending seq %d" % sequence)
+                self.log.debug("sending seq %d" % sequence)
                 # TODO: verify sequence when ack requested
             await self._bleak_client.write_gatt_char(self.write_char, postBytes, True)
             await asyncio.sleep(0.05)
@@ -492,7 +492,7 @@ class BlufiClient:
 
     async def post(self, encrypt: bool, checksum: bool, requireAck: bool, type: int, data: bytearray):
         if requireAck and not self._notify_en:
-            log.warning('ack requested but notifications not enabled. Incrementing read seq.')
+            self.log.warning('ack requested but notifications not enabled. Incrementing read seq.')
             self.mReadSequence += 1
         if not data or len(data) == 0:
             await self.postNonData(encrypt, checksum, requireAck, type)
@@ -569,9 +569,9 @@ class BlufiClient:
         self.await_bleak(self.postNegotiateSecurity())
 
         if not self.await_bleak(event_wait(self.secEvent, 5)):
-            log.error('negotiateSecurity failed!')
+            self.log.error('negotiateSecurity failed!')
         else:
-            log.info('negotiateSecurity success!')
+            self.log.info('negotiateSecurity success!')
             # ctrlEncrypted, ctrlChecksum, dataEncrypted, dataChecksum
             self.await_bleak(self.postSetSecurity(False, False, True, True))
             self.mEncrypted = True
@@ -590,9 +590,9 @@ class BlufiClient:
         self.ssidListEvent.clear()
         self.await_bleak(self.post(self.mEncrypted, self.mChecksum, False, type, None))
         if not self.await_bleak(event_wait(self.ssidListEvent, timeout)):
-            log.error('parseWifiScanList timed out!')
+            self.log.error('parseWifiScanList timed out!')
         else:
-            log.info('parseWifiScanList success!')
+            self.log.info('parseWifiScanList success!')
 
     def postDeviceMode(self, opMode):
         type = getTypeValue(CTRL.PACKAGE_VALUE, CTRL.SUBTYPE_SET_OP_MODE)
