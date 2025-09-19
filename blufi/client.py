@@ -23,7 +23,7 @@ logging.basicConfig(level=logging.ERROR)
 logging.getLogger("blufi").setLevel(logging.DEBUG)
 
 class BlufiClient:
-    def __init__(self):
+    def __init__(self, custom_data_cb: Optional[Callable[[bytearray], None]] = None):
         # Created on demand in self._bleak_thread context.
         self._scanner = None
         self._bleak_client = None
@@ -59,6 +59,9 @@ class BlufiClient:
         self.mAck = queue.Queue()
         self.rxBuf = bytearray()
         self.rxPubKeyBuf = bytearray()
+        # Register custom data callback if supplied
+        if custom_data_cb is not None:
+            self.onCustomData = custom_data_cb
 
         # Clean up connections, etc. when exiting (even by KeyboardInterrupt)
         atexit.register(self._cleanup)
